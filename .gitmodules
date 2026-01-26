@@ -1,0 +1,3 @@
+[submodule "libs/asioxx"]
+	path = libs/asioxx
+	url = https://github.com/almageir/asioxx.git
