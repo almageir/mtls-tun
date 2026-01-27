@@ -1,7 +1,12 @@
 #include "app/server.h"
 
+#include <asynclog/log_manager.h>
+#include <asynclog/scoped_logger.h>
+#include <asynclog/logger_factory.h>
 #include <cliap/cliap.h>
+
 #include <iostream>
+
 
 std::optional<mtls_tun::server_conf> parse_command_line_arguments(int argc, char* argv[])
 {
@@ -47,9 +52,18 @@ std::optional<mtls_tun::server_conf> parse_command_line_arguments(int argc, char
 
 int main(int argc, char* argv[])
 {
+    namespace asl = asynclog;
+
+    auto log_backend = std::make_shared<asl::LogManager>();
+    log_backend->open(asl::LogMode::Console | asl::LogMode::File, "trace.log");
+
+    asl::LoggerFactory log_factory(log_backend);
+
+    auto logger = log_factory.create("Application");
+
     const auto conf = parse_command_line_arguments(argc, argv);
     if (!conf.has_value()) {
-        std::cout << "Program finished..." << std::endl;
+        logger.info("Program finished...");
         return 0;
     }
 
@@ -58,10 +72,11 @@ int main(int argc, char* argv[])
 #endif
 
     try {
-        mtls_tun::server srv(conf.value());
+        mtls_tun::server srv(conf.value(), log_factory);
         srv.run();
     } catch (const std::exception& ex) {
         std::cerr << ex.what() << std::endl;
+        logger.info(ex.what());
     }
 
     return 0;
