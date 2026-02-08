@@ -1,4 +1,4 @@
-#include "session.h"
+#include "tun_session.h"
 
 #include <asio.hpp>
 
@@ -10,53 +10,44 @@
 #include "asynclog/logger_factory.h"
 
 namespace {
-    enum : std::int32_t { eRemote, eLocal };
-
-    std::string to_string(std::int32_t dir, net::error_code ec, const tcp::endpoint& rep)
+    std::string to_string(const net::error_code ec, const tcp::endpoint& rep)
     {
-        if (ec) {
-            return std::format("{} {}",
-                               dir == eRemote ? "remote_endpoint failed:" : "local_endpoint failed:",
-                               ec.message()).c_str();
-        }
+        if (ec)
+            return std::format("remote_endpoint failed: {}", ec.message());
 
-        return std::format("{}:{}", rep.address().to_string(), rep.port()).c_str();
+        return std::format("{}:{}", rep.address().to_string(), rep.port());
     }
 
-    std::string ep_to_str(const tcp::socket& sock, std::int32_t dir)
+    std::string ep_to_str(const tcp::socket& sock)
     {
         if (!sock.is_open())
             return "socket not opened";
 
         net::error_code ec;
-        const tcp::endpoint& rep = (dir == eRemote)
-            ? sock.remote_endpoint(ec)
-            : sock.local_endpoint(ec);
+        const tcp::endpoint rep = sock.remote_endpoint(ec);
 
-        return to_string(dir, ec, rep);
+        return to_string(ec, rep);
     }
 
 
-    std::string ep_to_str(const net::ssl::stream<tcp::socket>& sock, std::int32_t dir)
+    std::string ep_to_str(const net::ssl::stream<tcp::socket>& sock)
     {
         if (!sock.lowest_layer().is_open())
             return {"socket not opened"};
 
         net::error_code ec;
-        const tcp::endpoint& rep = (dir == eRemote)
-            ? sock.lowest_layer().remote_endpoint(ec)
-            : sock.lowest_layer().local_endpoint(ec);
+        const tcp::endpoint rep = sock.lowest_layer().remote_endpoint(ec);
 
-        return to_string(dir, ec, rep);
+        return to_string(ec, rep);
     }
 }
 
 namespace mtls_tun {
 
-    session::session(
+    TunSession::TunSession(
         tcp::socket&& socket,
         net::ssl::context &ctx,
-        session_manager &mgr,
+        SessionManager &mgr,
         asynclog::ScopedLogger logger,
         std::string_view remote_host,
         std::string_view remote_service,
@@ -72,44 +63,52 @@ namespace mtls_tun {
     {
         remote_ep_ = remote_host_ + ':' + remote_service_;
         remote_sock_.set_verify_mode(net::ssl::verify_peer);
-        remote_sock_.set_verify_callback(std::bind(&session::verify_certificate, this, _1, _2));
+        remote_sock_.set_verify_callback(std::bind(&TunSession::verify_certificate, this, _1, _2));
     }
 
-    session::~session()
+    TunSession::~TunSession()
     {
         auto message = std::format("connection from {} to {}{} closed, sescnt: {}, scnt: {}",
                 client_ep_, remote_ep_, remote_resolved_ep_, manager_.ses_count(), --g_scount);
         logger_.info(message);
     }
 
-    session::pointer session::create(tcp::socket&& socket,
-                                     net::ssl::context &ctx,
-                                     session_manager &mgr,
-                                     asynclog::LoggerFactory log_factory,
-                                     std::string_view remote_host,
-                                     std::string_view remote_port,
-                                     std::string_view server_name)
+    TunSession::pointer TunSession::create(tcp::socket&& socket,
+                                           net::ssl::context &ctx,
+                                           SessionManager &mgr,
+                                           const asynclog::LoggerFactory &log_factory,
+                                           std::string_view remote_host,
+                                           std::string_view remote_port,
+                                           std::string_view server_name)
     {
         auto scoped_logger = log_factory.create("Session");
-        return pointer(new session(std::move(socket), ctx, mgr, std::move(scoped_logger), remote_host, remote_port, server_name));
+        return pointer(new TunSession(std::move(socket),
+                                   ctx,
+                                   mgr,
+                                      std::move(scoped_logger),
+                                      remote_host,
+                                      remote_port,
+                                      server_name));
     }
 
-    void session::start() {
+    void TunSession::start() {
         manager_.join(shared_from_this());
-        client_ep_ = ep_to_str(local_sock_, eRemote);
+        client_ep_ = ep_to_str(local_sock_);
 
-        std::string message = std::format("accepted connection from {}, sescnt: {}, scnt: {}",
-            client_ep_, manager_.ses_count(), ++g_scount);
+        const std::string message = std::format("accepted connection from {}, sescnt: {}, scnt: {}",
+                                            client_ep_,
+                                                manager_.ses_count(),
+                                                ++g_scount);
         logger_.info(message);
 
         do_resolve();
     }
 
-    void session::stop() {
+    void TunSession::stop() {
         close();
     }
 
-    void session::close() {
+    void TunSession::close() {
         if (local_sock_.is_open()) {
             net::error_code ignored_ec;
             local_sock_.shutdown(net::socket_base::shutdown_both, ignored_ec);
@@ -123,7 +122,7 @@ namespace mtls_tun {
                 [this, self{shared_from_this()}](const net::error_code &ec) {
                     if (ec && ec.category() == net::error::get_ssl_category()) {
                         if (ec != net::error::operation_aborted/* && ec != net::error::bad_descriptor*/) {
-                            logger_.info(std::format("{} value: {}", ec.message(), ec.value()).c_str());
+                            logger_.info(std::format("{} value: {}", ec.message(), ec.value()));
                         }
                     }
                     remote_sock_.lowest_layer().close();
@@ -133,7 +132,7 @@ namespace mtls_tun {
                 [this, self{shared_from_this()}](const net::error_code &ec, std::size_t trans_bytes) {
                     if (ec && ec.category() == net::error::get_ssl_category()) {
                         if (ec != net::error::operation_aborted/* && ec != net::error::bad_descriptor*/) {
-                            logger_.info(std::format("{} value: {}", ec.message(), ec.value()).c_str());
+                            logger_.info(std::format("{} value: {}", ec.message(), ec.value()));
                         }
                     }
                     remote_sock_.lowest_layer().close();
@@ -141,7 +140,7 @@ namespace mtls_tun {
         }
     }
 
-    void session::close_ssl() {
+    void TunSession::close_ssl() {
         if (remote_sock_.lowest_layer().is_open()) {
             net::error_code ec;
             remote_sock_.lowest_layer().cancel(ec);
@@ -149,7 +148,7 @@ namespace mtls_tun {
                 [this, self{shared_from_this()}](const net::error_code &ec) {
                     if (ec) {
                         if (ec != net::error::operation_aborted && ec != net::error::bad_descriptor) {
-                            logger_.info(std::format("{} value: {}", ec.message(), ec.value()).c_str());
+                            logger_.info(std::format("{} value: {}", ec.message(), ec.value()));
                         }
                     }
                     remote_sock_.lowest_layer().close();
@@ -159,11 +158,11 @@ namespace mtls_tun {
         }
     }
 
-    bool session::verify_certificate(bool preverified, net::ssl::verify_context &ctx) {
+    bool TunSession::verify_certificate(bool preverified, net::ssl::verify_context &ctx) {
         return preverified;
     }
 
-    void session::handshake() {
+    void TunSession::handshake() {
         //std::cout << "start handshake with: " << remote_resolved_ep_ << std::endl;
         remote_sock_.async_handshake(
             net::ssl::stream_base::client,
@@ -173,33 +172,33 @@ namespace mtls_tun {
                     do_read_from_local();
                     do_read_from_remote();
                 } else {
-                    logger_.info(std::format("Handshake failed: {}", ec.message()).c_str());
+                    logger_.info(std::format("Handshake failed: {}", ec.message()));
                     manager_.leave(shared_from_this());
                 }
             });
     }
 
-    void session::do_resolve() {
+    void TunSession::do_resolve() {
         resolver_.async_resolve(
             remote_host_, remote_service_,
             [this, self{shared_from_this()}](const net::error_code &ec, const tcp::resolver::results_type &eps) {
                 if (!ec) {
                     do_connect(eps);
                 } else {
-                    logger_.info(std::format("[{}] {}", remote_ep_, ec.message()).c_str());
+                    logger_.info(std::format("[{}] {}", remote_ep_, ec.message()));
                     manager_.leave(shared_from_this());
                 }
             });
     }
 
-    void session::do_connect(const tcp::resolver::results_type &eps) {
+    void TunSession::do_connect(const tcp::resolver::results_type &eps) {
         net::async_connect(
             remote_sock_.lowest_layer(), eps,
             [this, self{shared_from_this()}](const net::error_code &ec, const tcp::endpoint & /*ep*/) {
-                remote_resolved_ep_ = '(' + ep_to_str(remote_sock_, eRemote) + ')';
+                remote_resolved_ep_ = std::format("({})", ep_to_str(remote_sock_));
 
                 logger_.info(std::format("connection from {} to {}{} established",
-                    client_ep_, remote_ep_, remote_resolved_ep_).c_str());
+                    client_ep_, remote_ep_, remote_resolved_ep_));
                 if (!ec) {
                     if (!server_name_.empty()) {
                         if (!SSL_set_tlsext_host_name(remote_sock_.native_handle(), server_name_.c_str()))
@@ -213,7 +212,7 @@ namespace mtls_tun {
             });
     }
 
-    void session::do_read_from_local() {
+    void TunSession::do_read_from_local() {
         local_sock_.async_read_some(
             net::buffer(local_buffer_),
             [this, self{shared_from_this()}](const net::error_code &ec, std::size_t bytes_transferred) {
@@ -225,7 +224,7 @@ namespace mtls_tun {
             });
     }
 
-    void session::do_read_from_remote() {
+    void TunSession::do_read_from_remote() {
         remote_sock_.async_read_some(
             net::buffer(remote_buffer_),
             [this, self{shared_from_this()}](const net::error_code &ec, std::size_t bytes_transferred) {
@@ -237,7 +236,7 @@ namespace mtls_tun {
             });
     }
 
-    void session::do_write_to_remote(std::size_t bytes_transferred) {
+    void TunSession::do_write_to_remote(std::size_t bytes_transferred) {
         net::async_write(
             remote_sock_, net::buffer(local_buffer_.data(), bytes_transferred),
             [this, self{shared_from_this()}](const net::error_code &ec, std::size_t bytes_transferred) {
@@ -249,7 +248,7 @@ namespace mtls_tun {
             });
     }
 
-    void session::do_write_to_local(std::size_t bytes_transferred) {
+    void TunSession::do_write_to_local(std::size_t bytes_transferred) {
         net::async_write(
             local_sock_, net::buffer(remote_buffer_.data(), bytes_transferred),
             [this, self{shared_from_this()}](const net::error_code &ec, std::size_t bytes_transferred) {

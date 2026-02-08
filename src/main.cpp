@@ -1,4 +1,4 @@
-#include "app/server.h"
+#include "app/tun_server.h"
 
 #include <asynclog/log_manager.h>
 #include <asynclog/scoped_logger.h>
@@ -8,7 +8,7 @@
 #include <iostream>
 
 
-std::optional<mtls_tun::server_conf> parse_command_line_arguments(int argc, char* argv[])
+std::optional<mtls_tun::ServerConf> parse_command_line_arguments(int argc, char* argv[])
 {
     using cliap::Arg;
     cliap::ArgParser argParser;
@@ -36,7 +36,7 @@ std::optional<mtls_tun::server_conf> parse_command_line_arguments(int argc, char
         return std::nullopt;
     }
 
-    mtls_tun::server_conf srv_conf{};
+    mtls_tun::ServerConf srv_conf{};
     srv_conf.tls_options.private_key = argParser.arg("p").get_value_as_str();
     srv_conf.tls_options.client_cert = argParser.arg("s").get_value_as_str();
     srv_conf.tls_options.ca_cert = argParser.arg("c").get_value_as_str();
@@ -57,9 +57,9 @@ int main(int argc, char* argv[])
     auto log_backend = std::make_shared<asl::LogManager>();
     log_backend->open(asl::LogMode::Console | asl::LogMode::File, "trace.log");
 
-    asl::LoggerFactory log_factory(log_backend);
+    asl::LoggerFactory log_factory(std::move(log_backend));
 
-    auto logger = log_factory.create("Application");
+    const auto logger = log_factory.create("Application");
 
     const auto conf = parse_command_line_arguments(argc, argv);
     if (!conf.has_value()) {
@@ -72,7 +72,7 @@ int main(int argc, char* argv[])
 #endif
 
     try {
-        mtls_tun::server srv(conf.value(), log_factory);
+        mtls_tun::TunServer srv(conf.value(), std::move(log_factory));
         srv.run();
     } catch (const std::exception& ex) {
         std::cerr << ex.what() << std::endl;

@@ -2,7 +2,7 @@
 #ifndef MTLS_TUN_SERVER_H
 #define MTLS_TUN_SERVER_H
 
-#include "session.h"
+#include "tun_session.h"
 
 #include <asynclog/scoped_logger.h>
 #include <asynclog/logger_factory.h>
@@ -17,7 +17,7 @@ namespace mtls_tun
     using tcp = asio::ip::tcp;
     namespace net = asio;
 
-    struct tls_options {
+    struct TlsOptions {
         std::string private_key;
         std::string client_cert;
         std::string ca_cert;
@@ -25,31 +25,31 @@ namespace mtls_tun
         std::string server_name;
     };
 
-    struct server_conf {
+    struct ServerConf {
         std::string listen_port;
         std::string target_port;
         std::string target_host;
-        tls_options tls_options;
+        TlsOptions tls_options;
     };
 
-    class server
+    class TunServer
     {
     public:
-        explicit server(const server_conf& conf, asynclog::LoggerFactory log_factory);
+        explicit TunServer(const ServerConf& conf, asynclog::LoggerFactory log_factory);
 
         void start_accept();
         void run();
 
     private:
         void configure_signals();
-        void configure_tls(const tls_options &settings);
+        void configure_tls(const TlsOptions &settings);
         void start_wait_signals();
 
         net::io_context ioc_;
         net::signal_set signals_;
         tcp::acceptor acceptor_;
-        session_manager manager_;
-        server_conf conf_;
+        SessionManager manager_;
+        ServerConf conf_;
         net::ssl::context ssl_ctx_;
         asynclog::LoggerFactory log_factory_;
         asynclog::ScopedLogger logger_;

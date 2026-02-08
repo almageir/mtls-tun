@@ -6,22 +6,22 @@
 
 namespace mtls_tun
 {
-    class session_base {
+    class Session {
     public:
-        virtual ~session_base() = default;
+        virtual ~Session() = default;
         virtual void stop() {
         }
     };
 
-    using session_base_ptr = std::shared_ptr<session_base>;
+    using SessionPtr = std::shared_ptr<Session>;
 
-    class session_manager {
+    class SessionManager {
     public:
-        void join(session_base_ptr ses) {
+        void join(SessionPtr ses) {
             sessions_.insert(std::move(ses));
         }
 
-        void leave(const session_base_ptr &ses) {
+        void leave(const SessionPtr &ses) {
             ses->stop();
             sessions_.erase(ses);
         }
@@ -29,7 +29,7 @@ namespace mtls_tun
         std::size_t ses_count() const { return sessions_.size(); }
 
     private:
-        std::set<session_base_ptr> sessions_;
+        std::set<SessionPtr> sessions_;
     };
 }
 

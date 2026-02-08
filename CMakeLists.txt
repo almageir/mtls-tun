@@ -2,9 +2,9 @@
 
 project (mtls-tun)
 
-configure_file(${PROJECT_SOURCE_DIR}/config/ca.pem          ${CMAKE_CURRENT_BINARY_DIR}/ca.pem COPYONLY)
-configure_file(${PROJECT_SOURCE_DIR}/config/client-cert.pem ${CMAKE_CURRENT_BINARY_DIR}/client-cert.pem COPYONLY)
-configure_file(${PROJECT_SOURCE_DIR}/config/client-key.pem  ${CMAKE_CURRENT_BINARY_DIR}/client-key.pem COPYONLY)
+configure_file(${PROJECT_SOURCE_DIR}/config/test-ca.pem ${CMAKE_CURRENT_BINARY_DIR}/test-ca.pem COPYONLY)
+configure_file(${PROJECT_SOURCE_DIR}/config/test-client-cert.pem ${CMAKE_CURRENT_BINARY_DIR}/test-client-cert.pem COPYONLY)
+configure_file(${PROJECT_SOURCE_DIR}/config/test-client-key.pem ${CMAKE_CURRENT_BINARY_DIR}/test-client-key.pem COPYONLY)
 
 if(WIN32)
     set(OPENSSL_USE_STATIC_LIBS     TRUE)
@@ -48,10 +48,10 @@ add_executable(mtls-tun)
 target_sources(mtls-tun
     PRIVATE
         src/main.cpp
-        src/app/server.cpp
-        src/app/session.cpp
-        src/app/server.h
-        src/app/session.h
+        src/app/tun_server.cpp
+        src/app/tun_session.cpp
+        src/app/tun_server.h
+        src/app/tun_session.h
         src/app/manager.h
 )
 
@@ -65,4 +65,7 @@ target_link_libraries(mtls-tun
 )
 
 target_compile_features(mtls-tun PRIVATE cxx_std_20)
-target_compile_definitions(mtls-tun PRIVATE "_WIN32_WINNT=0x0A00")
+
+if(WIN32)
+    target_compile_definitions(mtls-tun PRIVATE "_WIN32_WINNT=0x0A00")
+endif()
