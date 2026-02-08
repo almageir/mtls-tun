@@ -43,17 +43,19 @@ namespace mtls_tun {
         tcp::socket socket{ioc_.get_executor()};
         acceptor_.async_accept(
             [this](const net::error_code& ec, tcp::socket socket) {
-                logger_.info("create new session");
                 const auto new_session = TunSession::create(
                     std::move(socket), ssl_ctx_, manager_, log_factory_,
                     conf_.target_host,
                     conf_.target_port,
                     conf_.tls_options.server_name);
 
+                logger_.info(std::format("[{}] new session created", new_session->id()));
+
                 if (!ec)
                     new_session->start();
                 else
                     logger_.err(ec.message());
+
                 start_accept();
             });
     }
@@ -70,8 +72,12 @@ namespace mtls_tun {
     void TunServer::configure_tls(const TlsOptions &settings) {
         auto options = net::ssl::context::default_workarounds | net::ssl::context::no_tlsv1_1;
 
-        if (settings.version == "1.3")
+        if (settings.version == "1.3") {
             options |= net::ssl::context::no_tlsv1_2;
+            SSL_CTX_set_min_proto_version(ssl_ctx_.native_handle(), TLS1_3_VERSION);
+        } else {
+            SSL_CTX_set_min_proto_version(ssl_ctx_.native_handle(), TLS1_2_VERSION);
+        }
 
         ssl_ctx_.set_options(options);
 

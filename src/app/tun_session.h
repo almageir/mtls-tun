@@ -22,6 +22,9 @@ namespace mtls_tun
     using std::placeholders::_1;
     using std::placeholders::_2;
 
+    class TunSession;
+    using TunSessionPtr = std::shared_ptr<TunSession>;
+
     class TunSession
         : public Session
         , public std::enable_shared_from_this<TunSession>
@@ -29,32 +32,32 @@ namespace mtls_tun
     public:
         ~TunSession() override;
 
-        using pointer = std::shared_ptr<TunSession>;
-
         tcp::socket& socket() { return local_sock_; }
 
-        static pointer create(tcp::socket&& socket,
-                              net::ssl::context &ctx,
-                              SessionManager &mgr,
-                              const asynclog::LoggerFactory &log_factory,
-                              std::string_view remote_host,
-                              std::string_view remote_port,
-                              std::string_view server_name);
+        static TunSessionPtr create(tcp::socket&& socket,
+                                    net::ssl::context &ctx,
+                                    SessionManager &mgr,
+                                    const asynclog::LoggerFactory &log_factory,
+                                    std::string_view remote_host,
+                                    std::string_view remote_port,
+                                    std::string_view server_name);
 
         void start();
         void stop() override;
+
+        std::size_t id() const { return id_; }
 
     private:
         TunSession(tcp::socket&& socket,
                    net::ssl::context& ctx,
                    SessionManager& mgr,
-                   asynclog::ScopedLogger logger,
+                   asynclog::ScopedLogger&& logger,
                    std::string_view remote_host,
                    std::string_view remote_service,
                    std::string_view server_name);
 
         void close();
-        void close_ssl();
+        //void close_ssl();
 
         bool verify_certificate(bool preverified, net::ssl::verify_context &ctx);
         void handshake();
@@ -67,7 +70,8 @@ namespace mtls_tun
         void do_write_to_remote(std::size_t bytes_transferred);
         void do_write_to_local(std::size_t bytes_transferred);
 
-        static inline size_t g_scount = 0;
+        static inline std::size_t g_scount = 0;
+        static inline std::size_t id_source = 0;
 
         enum { max_buff_size = 0x4000 };
         using buffer_type = std::array<std::uint8_t, max_buff_size>;
@@ -77,6 +81,8 @@ namespace mtls_tun
         net::ssl::stream<tcp::socket> remote_sock_;
         SessionManager& manager_;
         asynclog::ScopedLogger logger_;
+        std::size_t id_;
+        bool tls_established_{false};
 
         std::string remote_host_;
         std::string remote_service_;
