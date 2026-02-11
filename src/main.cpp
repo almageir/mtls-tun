@@ -21,7 +21,7 @@ std::optional<mtls_tun::ServerConf> parse_command_line_arguments(int argc, char*
         .add_parameter(Arg("p,private-key").required().description("private key file path (pem format)"))
         .add_parameter(Arg("s,client-cert").required().description("client certificate file path (pem format)"))
         .add_parameter(Arg("c,ca-cert").required().description("CA certificate file path (pem format)"))
-        .add_parameter(Arg("n,server-name").description("TLS server name (SNI)"))
+        .add_parameter(Arg("n,server-name").set_default("").description("TLS server name (SNI)"))
         .add_parameter(Arg("v,tls-version").set_default("1.3").description("TLS protocol version [1.2 or 1.3]"));
 
     const auto err_msg = argParser.parse(argc, argv);
@@ -46,6 +46,7 @@ std::optional<mtls_tun::ServerConf> parse_command_line_arguments(int argc, char*
     srv_conf.listen_port = argParser.arg("l").get_value_as_str();
     srv_conf.target_host = argParser.arg("d").get_value_as_str();
     srv_conf.target_port = argParser.arg("t").get_value_as_str();
+    srv_conf.tls_options.server_name = argParser.arg("n").get_value_as_str();
 
     return srv_conf;
 }

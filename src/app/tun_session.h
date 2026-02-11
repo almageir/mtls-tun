@@ -35,8 +35,8 @@ namespace mtls_tun
         tcp::socket& socket() { return local_sock_; }
 
         static TunSessionPtr create(tcp::socket&& socket,
-                                    net::ssl::context &ctx,
-                                    SessionManager &mgr,
+                                    net::ssl::context& ctx,
+                                    SessionManager& mgr,
                                     const asynclog::LoggerFactory &log_factory,
                                     std::string_view remote_host,
                                     std::string_view remote_port,
@@ -59,11 +59,11 @@ namespace mtls_tun
         void close();
         //void close_ssl();
 
-        bool verify_certificate(bool preverified, net::ssl::verify_context &ctx);
+        bool verify_certificate(bool preverified, net::ssl::verify_context& ctx);
         void handshake();
 
         void do_resolve();
-        void do_connect(const tcp::resolver::results_type &eps);
+        void do_connect(const tcp::resolver::results_type& eps);
 
         void do_read_from_local();
         void do_read_from_remote();
